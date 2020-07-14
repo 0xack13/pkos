@@ -1,33 +1,9 @@
 // ----- Pre-processor constants -----
-#define ROWS 25
-#define COLS 80
-// IDT_SIZE: Specific to x86 architecture
-#define IDT_SIZE 256
-// KERNEL_CODE_SEGMENT_OFFSET: the first segment after the null segment in gdt.asm
-#define KERNEL_CODE_SEGMENT_OFFSET 0x8
-// 32-bit Interrupt gate: 0x8E
-// ( P=1, DPL=00b, S=0, type=1110b => type_attr=1000_1110b=0x8E) (thanks osdev.org)
-#define IDT_INTERRUPT_GATE_32BIT 0x8e
-// IO Ports for PICs
-#define PIC1_COMMAND_PORT 0x20
-#define PIC1_DATA_PORT 0x21
-#define PIC2_COMMAND_PORT 0xA0
-#define PIC2_DATA_PORT 0xA1
-// IO Ports for Keyboard
-#define KEYBOARD_DATA_PORT 0x60
-#define KEYBOARD_STATUS_PORT 0x64
+
 
 // ----- Includes -----
-#include "keyboard_map.h"
-
-// ----- External functions -----
-extern void print_char_with_asm(char c, int row, int col);
-extern void load_gdt();
-extern void keyboard_handler();
-extern char ioport_in(unsigned short port);
-extern void ioport_out(unsigned short port, unsigned char data);
-extern void load_idt(unsigned int* idt_address);
-extern void enable_interrupts();
+#include "keyboard/keyboard.h"
+#include "boot.h"
 
 // ----- Structs -----
 struct IDT_pointer {
@@ -44,7 +20,6 @@ struct IDT_entry {
 
 // ----- Global variables -----
 struct IDT_entry IDT[IDT_SIZE]; // This is our entire IDT. Room for 256 interrupts
-int cursor_pos = 0;
 
 void init_idt() {
 	// Get the address of the keyboard_handler code in kernel.asm as a number
@@ -112,43 +87,6 @@ void init_idt() {
 	idt_ptr.base = (unsigned int) &IDT;
 	// Now load this IDT
 	load_idt(&idt_ptr);
-}
-
-void kb_init() {
-	// 0xFD = 1111 1101 in binary. enables only IRQ1
-	// Why IRQ1? Remember, IRQ0 exists, it's 0-based
-	ioport_out(PIC1_DATA_PORT, 0xFD);
-}
-
-void handle_keyboard_interrupt() {
-	// Write end of interrupt (EOI)
-	ioport_out(PIC1_COMMAND_PORT, 0x20);
-
-	unsigned char status = ioport_in(KEYBOARD_STATUS_PORT);
-	// Lowest bit of status will be set if buffer not empty
-	// (thanks mkeykernel)
-	if (status & 0x1) {
-		char keycode = ioport_in(KEYBOARD_DATA_PORT);
-		if (keycode < 0 || keycode >= 128) return; // how did they know keycode is signed?
-		print_char_with_asm(keyboard_map[keycode],0,cursor_pos);
-		cursor_pos++;
-	}
-}
-
-void print_message() {
-	// Fill the screen with 'x'
-	int i, j;
-	for (i = 0; i < COLS; i++) {
-		for (j = 0; j < ROWS; j++) {
-			print_char_with_asm('*',j,i);
-		}
-	}
-	print_char_with_asm('-',0,0);
-	print_char_with_asm('P',0,1);
-	print_char_with_asm('K',0,2);
-	print_char_with_asm('O',0,3);
-	print_char_with_asm('S',0,4);
-	print_char_with_asm('-',0,5);
 }
 
 // ----- Entry point -----
